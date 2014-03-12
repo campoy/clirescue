@@ -1,3 +1,5 @@
+// This package provides an executable command line tool accessing the
+// tracker API.
 package main
 
 import (
