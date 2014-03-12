@@ -1,3 +1,4 @@
+// This package provides an easy to use wrapper on the tracker API
 package trackerapi
 
 import (
@@ -5,76 +6,43 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	u "os/user"
-	"path/filepath"
-
-	"github.com/campoy/clirescue/cmdutil"
 )
 
-const URL string = "https://www.pivotaltracker.com/services/v5/me"
+const apiURL string = "https://www.pivotaltracker.com/services/v5/me"
 
-var FileLocation string = fromHome("/.tracker")
+var client http.Client
 
-func Me() error {
-	u, p, err := getCredentials()
+// APIToken returns the authentication token corresponding to the given
+// username and password and an error if the operation fails.
+func APIToken(usr, password string) (string, error) {
+	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
-		return err
-	}
-
-	token, err := getAPIToken(u, p)
-	if err != nil {
-		return err
-	}
-	return ioutil.WriteFile(FileLocation, []byte(token), 0644)
-}
-
-func getAPIToken(usr, password string) (string, error) {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", URL, nil)
-	if err != nil {
-		return "", err
+		return "", fmt.Errorf("creating request")
 	}
 	req.SetBasicAuth(usr, password)
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
-
 	body, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
 	if err != nil {
 		return "", err
 	}
-	// TODO here? really?
-	fmt.Printf("\n****\nAPI response: \n%s\n", string(body))
 
 	var meResp struct {
 		APIToken string `json:"api_token"`
+		Error    string `json:"error"`
 	}
 
 	err = json.Unmarshal(body, &meResp)
-	return meResp.APIToken, err
-}
-
-func getCredentials() (usr, pwd string, err error) {
-	fmt.Print("Username: ")
-	usr, err = cmdutil.ReadLine()
 	if err != nil {
-		return
+		return "", fmt.Errorf("unmarshal response: %v", err)
 	}
-
-	cmdutil.Silence()
-	defer cmdutil.Unsilence()
-
-	fmt.Print("Password: ")
-	pwd, err = cmdutil.ReadLine()
-
-	return
-}
-
-func fromHome(path string) string {
-	usr, err := u.Current()
-	if err != nil {
-		panic(err)
+	// if there's API called failed, return the message as an error.
+	if meResp.Error != "" {
+		return "", fmt.Errorf(meResp.Error)
 	}
-	return filepath.Join(usr.HomeDir, path)
+	return meResp.APIToken, nil
 }
